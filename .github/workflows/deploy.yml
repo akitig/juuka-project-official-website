@@ -1,0 +1,57 @@
+# @format
+
+name: Deploy website
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        if: github.ref == 'refs/heads/main'
+        run: npm run build
+
+      - name: Build for development
+        if: github.ref == 'refs/heads/dev'
+        run: DEPLOY_TARGET=dev npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy to production
+        if: github.ref == 'refs/heads/main'
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.VPS_PORT }} -i ~/.ssh/deploy_key" \
+            out/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/juuka-project.com/
+
+      - name: Deploy to development
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.VPS_PORT }} -i ~/.ssh/deploy_key" \
+            out/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/work.akitiger.com/work/ju-pro/
